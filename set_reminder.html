@@ -163,7 +163,7 @@ function saveToDatabase() {
     }
 
     let encodedText = encodeURIComponent(textToPrint);
-    let rawbtURL = `intent://print/${encodedText}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;;`;
+    let rawbtURL = `intent:${encodedText}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;;`;
 
     window.location.href = rawbtURL;
 }
