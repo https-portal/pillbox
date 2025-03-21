@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Set Reminder</title>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+    import { getDatabase, ref, push, get } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+
+    // 🔥 Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDKVY301WVK-Lm-PspOp-1rICGo1YryuW8",
+      authDomain: "smartpillbox-3ab06.firebaseapp.com",
+      databaseURL: "https://smartpillbox-3ab06-default-rtdb.firebaseio.com/",
+      projectId: "smartpillbox-3ab06",
+      storageBucket: "smartpillbox-3ab06.appspot.com",
+      messagingSenderId: "740726286723",
+      appId: "1:740726286723:web:1f8efaf5c6ec59e0ee2eb6",
+      measurementId: "G-5C4HCCDY1B"
+    };
+
+    // 🔥 Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+    const auth = getAuth(app);
+
+    let reminderData = {};
+    let userName = "";
+    let userId = "";
+
+    // ✅ Check authentication and load medicines
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        userId = user.uid;
+        get(ref(database, 'users/' + userId))
+          .then((snapshot) => {
+            if (snapshot.exists()) {
+              userName = snapshot.val().firstName;
+              const userInfoElem = document.getElementById("userInfo");
+              if (userInfoElem) {
+                userInfoElem.innerText = "Reminder for: " + userName;
+              }
+              loadMedicines();
+            }
+          })
+          .catch((error) => console.error("Error fetching user data:", error));
+      } else {
+        window.location.href = "index.html";
+      }
+    });
+
+    // 🔄 Load stored medicines
+  function loadMedicines() {
+  get(ref(database, `users/${userId}/medicines`))
+    .then((snapshot) => {
+      if (snapshot.exists()) {
+        const medicines = snapshot.val();
+        for (let i = 1; i <= 6; i++) {
+          const medicineName = medicines[`compartment${i}`] || "Empty";
+          // 🔥 Show "Compartment X - Medicine Name"
+          document.getElementById(`medicine${i}`).innerText = `Compartment ${i} - ${medicineName}`;
+        }
+      }
+    })
+    .catch(error => console.error("Error fetching medicines:", error));
+}
+
+
+    function showStep(step) {
+      document.querySelectorAll(".step").forEach((s) => (s.style.display = "none"));
+      document.getElementById("step" + step).style.display = "block";
+    }
+
+    function saveDateTime() {
+      let date = document.getElementById("date").value;
+      let time = document.getElementById("time").value;
+      if (!date || !time) return alert("⚠️ Please select date and time!");
+
+      let day = new Date(date).toLocaleDateString("en-US", { weekday: "long" });
+      reminderData.date = date;
+      reminderData.time = time;
+      reminderData.day = day;
+      showStep(2);
+    }
+function saveMedicine() {
+  let selected = [];
+  document.querySelectorAll('input[name="medicine"]:checked').forEach((cb) => {
+    let compartment = cb.value;
+    let fullText = document.getElementById(`medicine${compartment}`).innerText;
+    let medicineName = fullText.replace(/^Compartment \d+ - /, ""); // ✅ Remove "Compartment X - "
+
+    selected.push({ compartment, medicine: medicineName }); // ✅ Save only clean medicine name
+  });
+
+  if (selected.length === 0) return alert("⚠️ Please select at least one medicine compartment!");
+
+  reminderData.medicine = selected;
+  showStep(3);
+}
+
+
+function saveSymptoms() {
+  let selected = [];
+  document.querySelectorAll('input[name="symptom"]:checked').forEach((cb) => selected.push(cb.value));
+  if (selected.length === 0) return alert("⚠️ Please select at least one symptom!");
+
+  reminderData.symptoms = selected;
+  showStep(4);
+
+  // 🔥 Extract only the medicine name (remove "Compartment X - ")
+  let medicineSummary = reminderData.medicine
+    .map(item => item.medicine.replace(/^Compartment \d+ - /, "")) // Remove "Compartment X - "
+    .join(", ");
+
+  document.getElementById("summary").innerHTML = `
+    <h3>Summary</h3>
+    <p><strong>User:</strong> ${userName}</p>
+    <p><strong>Date:</strong> ${reminderData.date} (${reminderData.day})</p>
+    <p><strong>Time:</strong> ${reminderData.time}</p>
+    <p><strong>Medicine:</strong> ${medicineSummary}</p> <!-- ✅ Only medicine names now -->
+    <p><strong>Symptoms:</strong> ${reminderData.symptoms.join(", ")}</p>
+  `;
+}
+
+
+
+function saveToDatabase() {
+  const user = auth.currentUser;
+  if (!user) {
+    alert("⚠️ User not authenticated!");
+    return;
+  }
+
+  reminderData.userId = user.uid;
+  reminderData.userName = userName;
+
+  push(ref(database, "reminders"), reminderData)
+    .then(() => {
+      alert("✅ Reminder saved successfully!");
+      printReceipt();
+    })
+    .catch((err) => alert("❌ Error saving: " + err));
+}
+
+
+  function printReceipt() {
+    alert("🖨️ Printing via Bluetooth...");
+
+    let userName = reminderData.userName || "Unknown User";
+    let date = reminderData.date || "N/A";
+    let day = reminderData.day || "N/A";
+    let time = reminderData.time || "N/A";
+    let medicineSummary = reminderData.medicineSummary || "None";
+    let symptoms = (reminderData.symptoms && reminderData.symptoms.length > 0) ? reminderData.symptoms.join(", ") : "None";
+
+    let textToPrint = `Summary\nUser: ${userName}\nDate: ${date} (${day})\nTime: ${time}\nMedicine: ${medicineSummary}\nSymptoms: ${symptoms}`;
+    
+    if (textToPrint.trim() === "") {
+        alert("Please enter text to print.");
+        return;
+    }
+
+    let encodedText = encodeURIComponent(textToPrint);
+    let rawbtURL = `intent://print/${encodedText}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;;`;
+
+    window.location.href = rawbtURL;
+}
+
+
+    window.saveDateTime = saveDateTime;
+    window.saveMedicine = saveMedicine;
+    window.saveSymptoms = saveSymptoms;
+    window.saveToDatabase = saveToDatabase;
+  </script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #f4f4f4;
+    }
+    .container {
+      background: white;
+      padding: 20px;
+      box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.2);
+      border-radius: 10px;
+      width: 350px;
+      text-align: center;
+    }
+
+
+
+ button {
+    margin-top: 15px;
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+  }
+
+  button:hover {
+    background-color: #45a049;
+  }
+
+
+
+
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <p id="userInfo"></p>
+
+    <div id="step1" class="step">
+      <h2>Add Schedule</h2>
+      <label>Date: <input type="date" id="date"></label>
+      <label>Time: <input type="time" id="time"></label>
+      <button onclick="saveDateTime()">Next</button>
+    </div>
+
+
+<div id="step2" class="step" style="display:none;">
+  <h2>Select Medicine Compartment</h2>
+  <label><input type="checkbox" name="medicine" value="1"> <span id="medicine1">Compartment 1 - Loading...</span></label><br>
+  <label><input type="checkbox" name="medicine" value="2"> <span id="medicine2">Compartment 2 - Loading...</span></label><br>
+  <label><input type="checkbox" name="medicine" value="3"> <span id="medicine3">Compartment 3 - Loading...</span></label><br>
+  <label><input type="checkbox" name="medicine" value="4"> <span id="medicine4">Compartment 4 - Loading...</span></label><br>
+  <label><input type="checkbox" name="medicine" value="5"> <span id="medicine5">Compartment 5 - Loading...</span></label><br>
+  <label><input type="checkbox" name="medicine" value="6"> <span id="medicine6">Compartment 6 - Loading...</span></label><br>
+  <button onclick="saveMedicine()">Next</button>
+</div>
+
+<div id="step3" class="step" style="display:none;">
+  <h2>Select Symptoms</h2>
+  <label><input type="checkbox" name="symptom" value="Cough"> Cough</label><br>
+  <label><input type="checkbox" name="symptom" value="Flu"> Flu</label><br>
+  <label><input type="checkbox" name="symptom" value="Fever"> Fever</label><br>
+  <label><input type="checkbox" name="symptom" value="Headache"> Headache</label><br>
+  <label><input type="checkbox" name="symptom" value="Stomachache"> Stomachache</label><br>
+  <button onclick="saveSymptoms()">Next</button>
+</div>
+
+    <div id="step4" class="step" style="display:none;">
+      <h2>  </h2>
+      <div id="summary"></div>
+      <button onclick="saveToDatabase()">Save & Print</button>
+<button class="btn" onclick="window.location.href='dashboard.html'">Back to Dashboard</button>
+
+    </div>
+  </div>
+</body>
+</html>

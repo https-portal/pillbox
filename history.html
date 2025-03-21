@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Reminder History</title>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getDatabase, ref, get, update } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDKVY301WVK-Lm-PspOp-1rICGo1YryuW8",
+            authDomain: "smartpillbox-3ab06.firebaseapp.com",
+            databaseURL: "https://smartpillbox-3ab06-default-rtdb.firebaseio.com/",
+            projectId: "smartpillbox-3ab06",
+            storageBucket: "smartpillbox-3ab06.appspot.com",
+            messagingSenderId: "740726286723",
+            appId: "1:740726286723:web:1f8efaf5c6ec59e0ee2eb6",
+            measurementId: "G-5C4HCCDY1B"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+        const auth = getAuth(app);
+
+        function fetchHistory(userId) {
+            const dbRef = ref(database, "reminders");
+
+            get(dbRef).then((snapshot) => {
+                if (snapshot.exists()) {
+                    let historyHTML = "";
+                    let foundHistory = false;
+
+                    snapshot.forEach((childSnapshot) => {
+                        let reminder = childSnapshot.val();
+                        let reminderId = childSnapshot.key; // Get unique ID of the reminder
+
+                        if (reminder.userId && reminder.userId === userId) {
+                            foundHistory = true;
+                            historyHTML += `
+                                <div class="history-item" id="reminder-${reminderId}">
+                                    <p><strong>Date:</strong> ${reminder.date} (${reminder.day})</p>
+                                    <p><strong>Time:</strong> ${reminder.time}</p>
+                                    <p><strong>Medicines:</strong> ${reminder.medicine ? Object.values(reminder.medicine).map(med => med.medicine).join(", ") : "N/A"}</p>
+                                    <p><strong>Symptoms:</strong> ${reminder.symptoms ? reminder.symptoms.join(", ") : "N/A"}</p>
+                                    <button class="edit-btn" onclick="editReminder('${reminderId}', '${reminder.date}', '${reminder.day}', '${reminder.time}', '${reminder.medicine ? Object.values(reminder.medicine).map(med => med.medicine).join(", ") : ""}', '${reminder.symptoms ? reminder.symptoms.join(", ") : ""}')">Edit</button>
+                                </div>`;
+                        }
+                    });
+
+                    document.getElementById("history").innerHTML = foundHistory ? historyHTML : "<p class='no-history'>No history found.</p>";
+                } else {
+                    document.getElementById("history").innerHTML = "<p class='no-history'>No history found.</p>";
+                }
+            }).catch((error) => {
+                console.error("Error fetching history:", error);
+                document.getElementById("history").innerHTML = "<p class='error-message'>Error fetching history.</p>";
+            });
+        }
+
+ onAuthStateChanged(auth, (user) => {
+            if (user) {
+                const userId = user.uid;
+                const userRef = ref(database, "users/" + userId);
+
+                get(userRef).then((snapshot) => {
+                    if (snapshot.exists()) {
+                        const userData = snapshot.val();
+                        document.getElementById("userName").innerText = `${userData.firstName}`;
+                    } else {
+                        document.getElementById("userName").innerText = "User";
+                    }
+                });
+
+                fetchHistory(userId);
+            } else {
+                window.location.href = "index.html"; // Redirect to login if not authenticated
+            }
+        });
+
+        // Edit Reminder Function
+        window.editReminder = function(reminderId, date, day, time, medicines, symptoms) {
+            document.getElementById("editForm").style.display = "block";
+            document.getElementById("editReminderId").value = reminderId;
+            document.getElementById("editDate").value = date;
+            document.getElementById("editDay").value = day;
+            document.getElementById("editTime").value = time;
+            document.getElementById("editMedicines").value = medicines;
+            document.getElementById("editSymptoms").value = symptoms;
+        };
+
+        // Update Reminder in Firebase
+        window.saveEditedReminder = function() {
+            const reminderId = document.getElementById("editReminderId").value;
+            const updatedDate = document.getElementById("editDate").value;
+            const updatedDay = document.getElementById("editDay").value;
+            const updatedTime = document.getElementById("editTime").value;
+            const updatedMedicines = document.getElementById("editMedicines").value.split(",").map(med => med.trim());
+            const updatedSymptoms = document.getElementById("editSymptoms").value.split(",").map(symptom => symptom.trim());
+
+            update(ref(database, "reminders/" + reminderId), {
+                date: updatedDate,
+                day: updatedDay,
+                time: updatedTime,
+                medicine: updatedMedicines.map(med => ({ medicine: med })),
+                symptoms: updatedSymptoms
+            }).then(() => {
+                alert("Reminder updated successfully!");
+                document.getElementById("editForm").style.display = "none";
+                location.reload();
+            }).catch((error) => {
+                console.error("Error updating reminder:", error);
+                alert("Failed to update reminder.");
+            });
+        };
+    </script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(to right, #6a11cb, #2575fc);
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            text-align: center;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .history-item {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            text-align: left;
+        }
+        .edit-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .edit-btn:hover {
+            background: #218838;
+        }
+        #editForm {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        .btn {
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+ <div class="container">
+    <h1>Reminder History</h1>
+    <p id="userName" style="font-size: 18px; font-weight: bold; color: #333;"></p>
+    <div id="history"><p>Loading history...</p></div>
+  <button class="btn" onclick="window.location.href='dashboard.html'">Back to Dashboard</button>
+
+
+    </div>
+
+    <div id="editForm">
+        <input type="hidden" id="editReminderId">
+        <input type="text" id="editDate" placeholder="Date">
+        <input type="text" id="editDay" placeholder="Day">
+        <input type="text" id="editTime" placeholder="Time">
+        <input type="text" id="editMedicines" placeholder="Medicines (comma-separated)">
+        <input type="text" id="editSymptoms" placeholder="Symptoms (comma-separated)">
+        <button class="btn" onclick="saveEditedReminder()">Save</button>
+    </div>
+</body>
+</html>
